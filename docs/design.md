@@ -212,6 +212,58 @@ subset" is the 70 questions the earlier harness sent to the stream.
 - **Caveat.** The probe differs from the earlier harness in more than forcing (no harness, the
   public engine, no pacing), so these numbers compare the two setups, not forcing alone.
 
+## Reading a recording
+
+OV2.5 reads a video as frames at a steady rate, each preceded by its time as text,
+`<12.0 seconds><|vision_start|>...<|vision_end|>`; that is how its chat template renders video frames
+and how it was trained to say when something happens. The default subtask sends a recording that
+way: the recording is decoded once, right after the upload, at a steady rate, and every question
+gets the frames up to its `t`, each behind its tag. A single picture (a live session's current
+frame) gets no tag, as the template prescribes.
+
+Clients send no sampling settings. How many frames and how large follow from the recording's length
+and its own size (`subtask.video_plan`), as benchmarks of OV2.5-4B found best per second of answer
+time:
+
+| Recording | Frames | Pixels per frame |
+| --- | --- | --- |
+| up to 256 s | one a second | about 129,600 (480 × 270) |
+| longer | at least 256, at most one every two seconds | about 200,000 (596 × 336 for 16:9) |
+
+Frames are never larger than the recording and keep its shape, and the plan always fits `[chat]
+context_tokens` and `max_images`: a 30-minute recording gets 900 frames, about 85,000 tokens.
+
+The table comes from runs of OV2.5-4B with the frames and tags exactly as the subtask sends them,
+prompts and scoring as in lmms-eval (TimeLens mIoU, the others accuracy), fixed-seed samples with one
+question per video, and four questions in flight (latency is the median per question):
+
+| Setting | TimeLens (70) | VideoMME short (40) | Latency |
+| --- | --- | --- | --- |
+| **1 fps × 129.6k** | 58.0 | **85.0** | **2.2 / 1.8 s** |
+| 2 fps × 129.6k | **59.8** | 80.0 | 7.3 / 4.2 s |
+| 1 fps × 230.4k | 57.5 | 85.0 | 4.0 / 3.1 s |
+| 2 fps × 230.4k | 58.1 | 82.5 | 8.8 / 7.0 s |
+| 1 fps × 321.5k | 55.6 | 85.0 | 3.5 / 4.4 s |
+
+| Setting | VideoMME medium, 4.6-18 min (40) | LongVideoBench, 15-29 min (30) | Latency |
+| --- | --- | --- | --- |
+| 1 fps × 129.6k | 75.0 | 46.7 | 19.9 / 54.6 s |
+| 1 fps × 200k | 75.0 | | 26.5 s |
+| **0.5 fps × 200k** | **75.0** | **60.0** | **8.9 / 23.6 s** |
+| at most 1280 frames × 80k (LongVideoBench's own setting) | | 56.7 | 43.4 s |
+
+With 20 to 70 questions a set, a difference of one or two questions is within sampling noise. Two
+things stood out. On short recordings, two frames a second or larger frames did not score
+consistently better and took two to four times as long. On long ones, fewer and larger frames, as
+the long-video benchmarks read them, matched or beat a frame a second in half the time. Temporal
+grounding papers use four frames a second (TimeLens: 62.7 on the same 70 questions at 480 × 270),
+at about eight times the latency of one; the subtask does not.
+
+A cut-off answer. The offline model writes until `max_tokens` (256) when it lists the same items
+over and over, or describes at length, and the text then stops mid-word. Such an answer
+(`finish_reason: "length"`) ends where the loop first comes round again, with "etc." in the
+answer's language, or at its last full sentence. The row keeps `finish_reason: "length"`.
+
 ## Frame health
 
 The streaming model was trained on one frame per second, with each frame's real capture time.

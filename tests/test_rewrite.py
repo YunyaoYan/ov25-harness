@@ -26,17 +26,17 @@ ON = {KEY_ENV: "k"}
 
 
 class Recording:
-    end = 20.0
+    end, fps, size = 20.0, 25.0, (1280, 720)
 
     def __init__(self, path=None):
         self.path, self.sampled = path, []
 
-    def indices(self, start, end, budget):
-        self.sampled.append((start, end, budget))
-        return [0, 10]
+    def seconds(self, rate, size):
+        self.sampled.append((rate, size))
 
-    async def rgb(self, indices, pixel_budget):
-        return [dict(FRAME, pts=float(i), frame_index=i) for i in indices]
+        async def frames():
+            return [dict(FRAME, pts=float(i), timestamp=float(i), frame_index=i) for i in (0, 10, 20)]
+        return asyncio.ensure_future(frames())
 
 
 class Host:
@@ -227,7 +227,7 @@ class RecordingTests(unittest.IsolatedAsyncioTestCase):
         video, text = body["messages"][0]["content"]
         self.assertTrue(video["video_url"]["url"].startswith("data:video/mp4;base64,"))
         self.assertEqual(text["text"], R["video_rewritten"])
-        self.assertEqual(body["media_io_kwargs"]["video"]["num_frames"], 28)      # (12288 - 256 - text - 256) // 400
+        self.assertEqual(body["media_io_kwargs"]["video"]["num_frames"], 28)      # the encoder's 11552 tokens // 400
         self.assertEqual((result.text, result.task, host.direct_calls), (ZH["answers"]["cards"], "offline_video", []))
         self.assertEqual((result.fields["video_frames"], result.fields["rewrite_status"]), (28, "rewritten"))
         self.assertEqual((result.fields["backend"], result.fields["source_window_s"]), ("offline_model", [0., 20.0]))
@@ -237,7 +237,8 @@ class RecordingTests(unittest.IsolatedAsyncioTestCase):
         host = Host(None)
         req, result = await self.ask(host, asked_at=12.0)
         self.assertEqual(host.video_requests, [])
-        self.assertEqual(req.recording.sampled, [(0., 12.0, host.settings.chat.max_images)])
+        self.assertEqual(req.recording.sampled, [subtasks.video_plan(req.recording, host.settings.chat)])
+        self.assertEqual([frame["pts"] for frame in host.direct_calls[0][1]], [0., 10.])
         self.assertEqual(result.task, "offline_rewrite")
 
     async def test_a_server_without_room_gets_fewer_frames(self):
@@ -265,7 +266,7 @@ class RecordingTests(unittest.IsolatedAsyncioTestCase):
                        lambda body: httpx.Response(400, json={"error": {"message": "maximum context length"}})):
             host = Host(None, broken, enabled=False)
             req, result = await self.ask(host)
-            self.assertEqual(req.recording.sampled, [(0., 20.0, host.settings.chat.max_images)])
+            self.assertEqual(req.recording.sampled, [subtasks.video_plan(req.recording, host.settings.chat)])
             self.assertEqual((result.text, result.task), (ZH["answers"]["cup_short"], "offline_rewrite"))
 
     async def test_a_chat_backend_without_video_samples_frames(self):
@@ -274,7 +275,7 @@ class RecordingTests(unittest.IsolatedAsyncioTestCase):
         host.chat = Chat()
         host.chat.aclose = host.http.aclose
         req, result = await self.ask(host)
-        self.assertEqual(req.recording.sampled, [(0., 20.0, host.settings.chat.max_images)])
+        self.assertEqual(req.recording.sampled, [subtasks.video_plan(req.recording, host.settings.chat)])
         self.assertEqual(result.task, "offline_rewrite")
 
 

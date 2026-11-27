@@ -60,8 +60,9 @@ Any server that speaks the OpenAI `/v1/chat/completions` API with image inputs.
 | `url` | `"http://127.0.0.1:8000/v1"` | | Base URL; requests go to `url + "/chat/completions"` |
 | `model` | `"ov25-4b-instruct"` | not empty | The served model name |
 | `max_concurrency` | `8` | 1 to 256 | Requests in flight to the offline model at once, across all sessions |
-| `max_images` | `8` | 1 to 64 | Images per request. Must match the server's `--limit-mm-per-prompt` |
-| `context_tokens` | `12288` | 1024 to 1,048,576 | The server's `--max-model-len`; used to fit a whole recording as one video |
+| `max_images` | `2048` | 1 to 4096 | Images per request. Must match the server's `--limit-mm-per-prompt`. A recording is read as at most this many frames |
+| `past_images` | `8` | 1 to 64 | Frames the `past` fallback takes from the session buffer |
+| `context_tokens` | `102400` | 1024 to 1,048,576 | The server's `--max-model-len`; a recording's frames are planned to fit it ([design.md](design.md#reading-a-recording)) |
 | `encoder_tokens` | `11552` | 1 to 1,048,576 | The visual encoder's token limit on that server; used the same way |
 
 ## `[voice]`
@@ -146,8 +147,9 @@ kind = "openai"
 url = "http://127.0.0.1:8000/v1"
 model = "ov25-4b-instruct"
 max_concurrency = 8
-max_images = 8
-context_tokens = 12288
+max_images = 2048
+past_images = 8
+context_tokens = 102400
 encoder_tokens = 11552
 
 [voice]

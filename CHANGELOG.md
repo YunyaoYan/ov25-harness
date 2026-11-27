@@ -3,6 +3,28 @@
 All notable changes to this project are recorded here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Recordings reach the offline model as a video: frames at a steady rate, each behind its
+  `<T.T seconds>` tag as the model's chat template renders video frames, so answers can say when
+  something happens. Before, a question sent `[chat] max_images` (8) frames as separate pictures with
+  no times. A recording is decoded once, right after the upload, and its frames are shared by every
+  question of the session; closing the session stops a decode still running.
+- The frame rate and size of a recording follow its length and resolution: one frame a second at
+  about 480 × 270 up to 256 s; at least 256 frames, at most one every two seconds, at about 200,000
+  pixels for longer recordings; never larger than the recording, always within `[chat]
+  context_tokens` and `max_images` ([design.md](docs/design.md#reading-a-recording)).
+- An offline-model answer cut off at `max_tokens` (`finish_reason: "length"`) ends at its last full
+  sentence, or where a list it keeps repeating first comes round again, with "etc." in the answer's
+  language, instead of mid-word. New locale message `list_continues`.
+- Rows of answers from more than 8 frames carry `video_frames` instead of every frame index.
+- `[chat]` defaults follow the documented server: `context_tokens` 102400 (was 12288), `max_images`
+  2048 (was 8, limit raised to 4096). The `past` fallback keeps its 8 buffered frames under the new
+  `[chat] past_images`.
+- docs/deployment.md: the offline model runs with CUDA graphs (no `--enforce-eager`), which decoded
+  4.5 times faster with the same answers, `--max-model-len 102400` and
+  `--limit-mm-per-prompt '{"image":2048,"video":1}'`.
+
 ## 0.1.0 - 2026-11-26
 
 Initial release.

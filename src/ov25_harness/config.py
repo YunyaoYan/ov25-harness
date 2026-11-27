@@ -87,10 +87,13 @@ class Chat(_Section):
     url: str = "http://127.0.0.1:8000/v1"
     model: str = Field("ov25-4b-instruct", min_length=1)
     max_concurrency: int = Field(8, ge=1, le=256)
-    # Images per request; must match the server's --limit-mm-per-prompt.
-    max_images: int = Field(8, ge=1, le=64)
+    # Images per request; must match the server's --limit-mm-per-prompt. A recording is read as up to
+    # this many frames (subtask.video_plan).
+    max_images: int = Field(2048, ge=1, le=4096)
+    # Frames the past fallback takes from the session buffer.
+    past_images: int = Field(8, ge=1, le=64)
     # The server's --max-model-len and visual encoder limit, for the frame budget of a whole video.
-    context_tokens: int = Field(12288, ge=1024, le=1_048_576)
+    context_tokens: int = Field(102400, ge=1024, le=1_048_576)
     encoder_tokens: int = Field(11552, ge=1, le=1_048_576)
 
     @field_validator("url")
