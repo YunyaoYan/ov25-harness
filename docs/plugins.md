@@ -47,15 +47,25 @@ class OfflineSubtask(Protocol):
 
 A frame is a dict with `png` (the image bytes: as received for live frames, JPEG or PNG despite the
 name), `pts` (session seconds), `frame_index`, `fps`, `pixel_budget`, and for live frames
-`received_at` (`time.monotonic()` at arrival).
+`received_at` (`time.monotonic()` at arrival). A frame of a recording's video (`seconds()` below)
+also has `timestamp`; `direct()` sends such a frame behind its `<T.T seconds>` tag.
 
 A `Recording` has `path`, `fps`, `timestamps` (each frame's time in seconds, from 0), `end` (the
-last frame's time), and two methods:
+last frame's time), `size` (its width and height), and these methods:
 
+- `seconds(rate, size) -> asyncio.Task`: the whole recording decoded once at `rate` frames a second,
+  scaled to `size`, as frame dicts with `timestamp` (JPEG). The same `(rate, size)` gives the same
+  task, so every question of a session shares one decode. `subtask.video_plan(recording,
+  settings.chat)` is the rate and size the default subtask uses
+  ([design.md](design.md#reading-a-recording)). Await it through `asyncio.shield()` if your question
+  may time out, so the decode goes on for the next one;
 - `indices(start, end, budget) -> list[int]`: up to `budget` frame indices spread evenly between two
   times;
 - `await rgb(indices, pixel_budget) -> list[dict]`: those frames decoded with ffmpeg into PNG
   (scaled down to at most 768 pixels on each side), as frame dicts.
+
+A subtask may also have `prepare(recording)`; the harness calls it right after a recording is
+uploaded, before any question. The default subtask starts the decode there.
 
 ### `OfflineResult` (dataclass)
 
@@ -75,7 +85,7 @@ What the harness gives your factory:
 
 | Attribute | Meaning |
 | --- | --- |
-| `await direct(question, frames, dialogue, deadline) -> dict` | Ask the offline model exactly as the harness does: the question with these frames; with no frames, with the persona and the dialogue. Returns a dict with `text`, `status` and the row fields (`backend`, `vision_model`, `finish_reason`, and with frames `source_window_s`, `source_frame_indices`). An HTTP error, a timeout or a malformed reply is not raised; it returns status `upstream_unavailable` instead, and an empty answer returns `invalid_visual_format` |
+| `await direct(question, frames, dialogue, deadline) -> dict` | Ask the offline model exactly as the harness does: the question with these frames; with no frames, with the persona and the dialogue. Returns a dict with `text`, `status` and the row fields (`backend`, `vision_model`, `finish_reason`, and with frames `source_window_s` and `source_frame_indices`, or `video_frames` for more than 8 frames). An answer cut at `max_tokens` is already shortened to what it finished saying. An HTTP error, a timeout or a malformed reply is not raised; it returns status `upstream_unavailable` instead, and an empty answer returns `invalid_visual_format` |
 | `chat` | The offline model client: `await chat.complete(body, timeout) -> (text, finish_reason)` for any OpenAI chat completions `body`. Shares the `[chat] max_concurrency` limit |
 | `settings` | The validated configuration (`settings.chat.max_images`, `settings.rewrite`, ...) |
 | `http` | An `httpx.AsyncClient` for calling other services (no timeout of its own: pass one), closed with the app |

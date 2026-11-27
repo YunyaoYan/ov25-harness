@@ -41,18 +41,20 @@ frame_backlog = 8
 #
 #     vllm serve lmms-lab-encoder/LLaVA-OneVision-2.5-4B-Instruct --served-model-name ov25-4b-instruct \
 #       --trust-remote-code --hf-overrides '{"model_type":"llava_onevision2_qwen35"}' \
-#       --max-model-len 12288 --limit-mm-per-prompt '{"image":8,"video":1}' \
-#       --gpu-memory-utilization 0.85 --enforce-eager --host 127.0.0.1 --port 8000
+#       --max-model-len 102400 --limit-mm-per-prompt '{"image":2048,"video":1}' \
+#       --gpu-memory-utilization 0.85 --host 127.0.0.1 --port 8000
 kind = "openai"
 url = "http://127.0.0.1:8000/v1"
 # The server's --served-model-name.
 model = "ov25-4b-instruct"
 max_concurrency = 8
 # Images per request: at most the server's --limit-mm-per-prompt image count, which vLLM enforces
-# exactly (a request with more gets HTTP 400).
-max_images = 8
-# The server's --max-model-len and visual encoder budget, for sending a whole recording as a video.
-context_tokens = 12288
+# exactly (a request with more gets HTTP 400). A recording is read as at most this many frames.
+max_images = 2048
+# Frames the past fallback takes from the session buffer.
+past_images = 8
+# The server's --max-model-len and visual encoder budget: a recording's frames are planned to fit it.
+context_tokens = 102400
 encoder_tokens = 11552
 
 [voice]

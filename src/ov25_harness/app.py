@@ -392,7 +392,7 @@ def build_app(settings, *, chat, streaming, transcriber=None, speaker=None, subt
                                                         max_duration_s=media.max_recording_s)
                     if sessions.get(sid) is not runtime or runtime.closing:
                         raise HTTPException(status_code=404, detail=gone(sid))
-                    runtime.session.recording = recording
+                    runtime.session.use_recording(recording)
                     runtime.last_activity = time.monotonic()
             except InvalidRecording as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error

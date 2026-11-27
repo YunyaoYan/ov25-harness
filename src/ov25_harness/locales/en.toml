@@ -42,6 +42,8 @@ request_timeout = "The request timed out."
 temporarily_unavailable = "This request cannot be completed right now. Please try again."
 offline_model_no_answer = "The offline model did not answer. Please try again."
 no_usable_answer = "No usable answer was produced."
+# An answer cut off at max_tokens while listing the same items over and over ends with this.
+list_continues = "{text}, etc."
 no_usable_frames = "No usable frames were received."
 watch_interrupted = "The watch was interrupted. Please start it again."
 low_frame_rate = "Only {frames} frames arrived in the last {window} seconds. The model works at 1 frame per second and answers get worse with fewer frames; please keep sending 1 frame per second."

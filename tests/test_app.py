@@ -1,5 +1,6 @@
 """The HTTP and audio API, with the two models replaced: the streaming engine by a source that answers
 what the real one would, the offline model by a chat backend that records what it was sent."""
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
 import time
@@ -10,7 +11,7 @@ import httpx
 import numpy as np
 from starlette.testclient import TestClient
 
-from ov25_harness import __version__, app as app_module, audio as audio_module
+from ov25_harness import __version__, app as app_module, audio as audio_module, subtask as subtasks
 from ov25_harness.app import build_app
 from ov25_harness.frame_health import FrameHealth
 
@@ -20,13 +21,20 @@ HEADERS = {"Content-Type": "image/jpeg"}
 
 
 class Recording:
-    fps, timestamps, end, path = 25.0, tuple(i / 25 for i in range(150)), 149 / 25, None
+    fps, timestamps, end, path, size = 25.0, tuple(i / 25 for i in range(150)), 149 / 25, None, (640, 360)
 
-    def indices(self, start, end, budget):
-        return [0, 75, 149]
+    def __init__(self):
+        self.decodes, self.forgotten = [], False
 
-    async def rgb(self, indices, pixel_budget):
-        return [dict(png=JPEG, pts=i / 25, frame_index=i, fps=25.0) for i in indices]
+    def seconds(self, rate, size):
+        self.decodes.append((rate, size))
+
+        async def frames():
+            return [dict(png=JPEG, pts=float(s), timestamp=float(s), frame_index=s * 25, fps=25.0) for s in (0, 3, 5)]
+        return asyncio.ensure_future(frames())
+
+    async def forget(self):
+        self.forgotten = True
 
 
 class GatewayTests(unittest.TestCase):
@@ -467,23 +475,32 @@ class RecordingTests(GatewayTests):
         self.assertEqual(self.client.post(f"{root}/video", content=b"x", headers={"Content-Type": "text/plain"}).status_code, 415)
         seen = {}
 
+        recording = Recording()
+
         async def inspect(path, **options):
             seen.update(options)
-            return Recording()
+            return recording
 
         with patch.object(app_module.Recording, "inspect", inspect):
             uploaded = self.client.post(f"{root}/video", content=b"mp4 bytes", headers={"Content-Type": "video/mp4"})
         self.assertEqual((uploaded.status_code, uploaded.json()["source_frames"], uploaded.json()["source_fps"]), (201, 150, 25.0))
         media = self.settings.media
         self.assertEqual(seen, dict(ffprobe=media.ffprobe, ffmpeg=media.ffmpeg, max_duration_s=media.max_recording_s))
+        # The decode starts with the upload, before any question.
+        self.assertEqual(recording.decodes, [subtasks.video_plan(recording, self.settings.chat)])
         self.assertEqual(self.client.post(f"{root}/video", content=b"x", headers={"Content-Type": "video/mp4"}).status_code, 409)
         self.assertEqual(self.client.post(f"{root}/text", json={"text": Q["video"], "time_scope": "past"}).status_code, 422)
         self.assertEqual(self.client.post(f"{root}/text", json={"text": Q["after"], "t": 999.}).status_code, 422)
         row = self.answer(root, Q["video"])
         self.assertEqual((row["status"], row["route"], row["task"], row["backend"]), ("ok", "offline", "offline_direct", "offline_model"))
-        self.assertEqual(row["source_window_s"], [0.0, 149 / 25])
-        self.assertEqual([part["type"] for part in self.bodies[-1]["messages"][-1]["content"]], ["image_url"] * 3 + ["text"])
+        self.assertEqual(row["source_window_s"], [0.0, 5.0])
+        content = self.bodies[-1]["messages"][-1]["content"]
+        self.assertEqual([part["type"] for part in content], ["text", "image_url"] * 3 + ["text"])
+        self.assertEqual([part["text"] for part in content[:-1:2]], ["<0.0 seconds>", "<3.0 seconds>", "<5.0 seconds>"])
+        row = self.answer(root, Q["video"], t=4., after=row["seq"])
+        self.assertEqual(row["source_window_s"], [0.0, 3.0])
         self.assertEqual(self.client.delete(root).json()["closed"], True)
+        self.assertTrue(recording.forgotten)
 
     def test_offline_sessions_are_limited(self):
         app = build_app(settings(media={"max_offline_sessions": 1}), chat=self.chat, streaming=self.engine)

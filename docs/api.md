@@ -340,8 +340,9 @@ Every row has `seq` (increasing per session) and `type`.
 | `route_decided_by` | live questions the harness answers itself | `rule` (a locale rule or `time_scope`), `model` (the router call), `fallback` (the router call failed, `realtime` was used). Absent on recording answers, on answers from the offline subtask, on watch reports and on timeout rows |
 | `elapsed_s` | answers to questions | Seconds from the question to the answer. Absent on watch reports and timeout rows |
 | `source_window_s` | when known | `[start, end]` in session seconds: the frames the answer was based on |
-| `source_frame_indices` | offline-model answers with frames | Frame indices of those frames |
-| `finish_reason` | offline-model answers | The model server's `finish_reason` (`stop`, `length`, ...) |
+| `source_frame_indices` | offline-model answers with up to 8 frames | Frame indices of those frames |
+| `video_frames` | offline-model answers with more than 8 frames | How many frames the answer was based on |
+| `finish_reason` | offline-model answers | The model server's `finish_reason` (`stop`, `length`, ...). An answer cut at `length` ends at its last full sentence, or where a repeated list first comes round again |
 | `current_frame_check` | `realtime` | See [Current-frame freshness](#current-frame-freshness) |
 | `coverage` | `past` | `stream` (answered by the streaming source) or `buffer` (answered by the offline model from buffered frames) |
 | `fallback_reason` | `past` with `coverage: buffer` | `stream_silent` or `stream_timeout` |
@@ -381,7 +382,7 @@ right away or chooses to stay silent.
   time of the question]`. Compaction drops old frames from the source, so the window start moves
   forward over a long session.
 - It stays silent (in a caption session that includes taking the question as a caption step), or
-  does not answer in time: the offline model answers from up to `[chat] max_images` (8) frames
+  does not answer in time: the offline model answers from up to `[chat] past_images` (8) frames
   taken evenly from the session's buffer between the source window start and the question, with
   `backend: "offline_model"`, `coverage: "buffer"`, and `fallback_reason`. The stream gets the turn
   less 3 s, so the offline model has those 3 s. With no buffered frames the status is
@@ -461,8 +462,13 @@ the server takes one upload at a time. The server needs `ffmpeg` and `ffprobe`
 ([configuration.md](configuration.md)).
 
 Questions about recordings are not routed: they all go to the offline subtask, so their rows have
-`route: "offline"`. The default subtask sends up to `[chat] max_images` frames taken evenly from the
-start of the recording to `t`, with the question, to the offline model.
+`route: "offline"`. Clients send no sampling settings. The default subtask decodes the recording once,
+right after the upload, at a rate and size chosen from its length and resolution (one frame a second
+at about 480 × 270 up to 256 s; at least 256 frames, at most one every two seconds, at about
+200,000 pixels for longer recordings; see [design.md](design.md#reading-a-recording)). A question
+gets the frames from the start of the recording to `t`, each behind its time (`<12.0 seconds>`),
+with the question, so an answer can say when something happens. The first question after an upload
+may wait for the decode (about 11 s for five minutes of 720p).
 
 ## Session logs
 

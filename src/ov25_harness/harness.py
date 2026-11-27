@@ -40,6 +40,11 @@ MAX_T_S = 1e10
 _TIME_PREFIX = re.compile(r"^(?:At\s+(\d+(?:\.\d+)?)\s*(?:seconds?|s)|\u7b2c?\s*(\d+(?:\.\d+)?)\s*\u79d2)\s*[:\uff1a]\s*",
                           re.I)
 _ERRORS = (httpx.HTTPError, TimeoutError, KeyError, IndexError, ValueError)
+# What ends an item of an answer, and what ends a sentence, in either language (the ideographic comma,
+# full stop and full-width marks included).
+_ITEM_END = ",;\uff0c\u3001\uff1b"
+_SENTENCE_END = ".!?\n\u3002\uff01\uff1f"
+_PIECES = re.compile(f"(?<=[{re.escape(_ITEM_END + _SENTENCE_END)}])")
 
 
 def _reply(text, status="ok", **fields):
@@ -54,6 +59,32 @@ def answer_body(text):
         return None, text
     seconds = float(match[1] or match[2])
     return (seconds if math.isfinite(seconds) else None), text[match.end():]
+
+
+def trim_unfinished(text, etc):
+    """An answer the model was cut off in, shortened to what it finished saying.
+
+    The offline model writes until max_tokens when it loops over the same items ("a white bowl, a
+    white bowl, ...") and when it describes at length; either way the text stops mid-phrase. A loop is
+    cut where an item it keeps coming back to (three times or more) first comes round again, and
+    etc(text) ends the list; anything else goes back to its last full sentence. A description may well
+    name a thing twice.
+    """
+    pieces = _PIECES.split(text)
+    items = [piece.strip().rstrip(_ITEM_END + _SENTENCE_END) for piece in pieces]
+    looping = {item for item in items if item and items.count(item) >= 3}
+    seen, kept = set(), []
+    for piece, item in zip(pieces, items, strict=True):
+        if item in looping and item in seen and kept:
+            said = "".join(kept).rstrip()
+            return said if said[-1:] in tuple(_SENTENCE_END) else etc(said.rstrip(_ITEM_END))
+        seen.add(item)
+        kept.append(piece)
+    end = max(text.rfind(mark) for mark in _SENTENCE_END)
+    if end > 0:
+        return text[:end + 1].strip()
+    end = max(text.rfind(mark) for mark in _ITEM_END)
+    return (text[:end] if end > 0 else text).rstrip() + "\u2026"
 
 
 def lock_current_frame(frames, at, submitted_at, max_age):
@@ -129,7 +160,13 @@ class Harness:
             messages.append({"role": "system", "content": self.locale.persona(language)})
             for asked, answered in dialogue:
                 messages += [{"role": "user", "content": asked}, {"role": "assistant", "content": answered}]
-        content = [{"type": "image_url", "image_url": {"url": _data_url(frame["png"])}} for frame in frames]
+        content = []
+        for frame in frames:
+            # A video frame carries its time as the model was trained to read it, "<T.T seconds>" right
+            # before the picture; a single picture (the current frame) has none.
+            if frame.get("timestamp") is not None:
+                content.append({"type": "text", "text": f"<{frame['timestamp']:.1f} seconds>"})
+            content.append({"type": "image_url", "image_url": {"url": _data_url(frame["png"])}})
         messages += [{"role": "user", "content": [*content, {"type": "text", "text": question}]}]
         # The template's own assistant turn: OV2.5 is trained on the qwen2-vl format, which has no think
         # mode, and a prefilled "<think></think>" makes it reason aloud past the deadline.
@@ -141,12 +178,17 @@ class Harness:
             _LOG.warning("direct answer failed: %s", type(error).__name__)
             return _reply(self.say(language, "offline_model_no_answer"), "upstream_unavailable")
         text = text.strip()
+        if finish == "length" and text:
+            text = trim_unfinished(text, lambda said: self.say(language, "list_continues", text=said))
         if not text:
             return _reply(self.say(language, "no_usable_answer"), "invalid_visual_format")
         fields = dict(backend="offline_model", vision_model=model, finish_reason=finish)
         if frames:
-            fields.update(source_window_s=[frames[0]["pts"], frames[-1]["pts"]],
-                          source_frame_indices=[frame.get("frame_index") for frame in frames])
+            fields.update(source_window_s=[frames[0]["pts"], frames[-1]["pts"]])
+            if len(frames) > 8:
+                fields.update(video_frames=len(frames))
+            else:
+                fields.update(source_frame_indices=[frame.get("frame_index") for frame in frames])
         return _reply(text, **fields)
 
     async def process(self, state):
@@ -211,7 +253,7 @@ class Harness:
         """The offline model on frames from the session buffer between the source window's start
         and the question, the question unchanged and no dialogue."""
         frames = [frame for frame in state["frames"] if start is None or frame["pts"] >= start]
-        frames = sample_evenly(frames, self.settings.chat.max_images)
+        frames = sample_evenly(frames, self.settings.chat.past_images)
         if not frames:
             return _reply(self.say(state["language"], "no_usable_frames"), "insufficient_evidence",
                           fallback_reason=reason)
@@ -333,6 +375,13 @@ class LiveSession:
         self.request = None
         self.requests = set()
         self.closed = False
+
+    def use_recording(self, recording):
+        """The uploaded recording; the subtask may start reading it before the first question."""
+        self.recording = recording
+        prepare = getattr(getattr(self.harness, "subtask", None), "prepare", None)
+        if prepare is not None:
+            prepare(recording)
 
     def frame(self, data, pts, index):
         if self.closed or len(data) > self.policy.max_frame_bytes or self.frames and pts <= self.frames[-1]["pts"]:
@@ -464,6 +513,8 @@ class LiveSession:
         try:
             await asyncio.gather(*requests, return_exceptions=True)
             await self.stop_watch()
+            if self.recording is not None and hasattr(self.recording, "forget"):
+                await self.recording.forget()
             self.frames.clear()
             self.pending_chat.clear()
             self.chat.clear()

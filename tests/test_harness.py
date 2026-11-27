@@ -284,7 +284,7 @@ class PastTests(HarnessCase):
         result = await self.past(FakeStream(StreamSilent("silence"), start=6.))
         self.assertEqual((result["status"], result["backend"], result["coverage"], result["fallback_reason"]),
                          ("ok", "offline_model", "buffer", "stream_silent"))
-        # Up to max_images frames, evenly spread from the window start to the question, newest included.
+        # Up to past_images frames, evenly spread from the window start to the question, newest included.
         self.assertEqual(result["source_frame_indices"], [6, 8, 10, 12, 13, 15, 17, 19])
         self.assertEqual(result["source_window_s"], [6.0, 19.0])
         body = self.bodies[-1]

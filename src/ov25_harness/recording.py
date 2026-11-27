@@ -2,7 +2,7 @@
 import asyncio
 from bisect import bisect_left, bisect_right
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import pairwise
 import json
@@ -14,6 +14,9 @@ from tempfile import TemporaryDirectory
 MAX_DURATION_S = 1800
 MAX_SOURCE_FRAMES = 108000
 SUPPORTED_CODECS = {"h264", "hevc"}
+# Decoding a whole recording at a steady rate: about 11 s for five minutes of 720p with four threads.
+DECODE_THREADS = 4
+DECODE_TIMEOUT_S = 600
 
 
 class InvalidRecording(ValueError):
@@ -56,6 +59,9 @@ class Recording:
     timestamps: tuple[float, ...]
     origin_pts: float = 0.
     ffmpeg: str = "ffmpeg"
+    size: tuple[int, int] = (0, 0)
+    # The decodes seconds() has started, by (rate, size): one per recording, however many questions.
+    _decoded: dict = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def end(self):
@@ -90,7 +96,50 @@ class Recording:
                 raise ValueError("the native renderer requires a constant source frame rate")
         except (KeyError, TypeError, ValueError, ZeroDivisionError, OverflowError) as error:
             raise InvalidRecording("expected a constant-frame-rate H.264 or HEVC MP4/MOV recording") from error
-        return cls(path, fps, timestamps, float(ticks[0] * time_base), ffmpeg)
+        return cls(path, fps, timestamps, float(ticks[0] * time_base), ffmpeg, (stream["width"], stream["height"]))
+
+    def seconds(self, rate, size):
+        """The recording as a video: a frame every 1/rate seconds, scaled to size, each with its
+        timestamp. Decoded once and shared; the task gives [dict(png=<jpeg>, pts, timestamp, ...)]."""
+        key = (rate, tuple(size))
+        task = self._decoded.get(key)
+        if task is None or task.cancelled() or task.done() and task.exception() is not None:
+            task = self._decoded[key] = asyncio.create_task(self._decode_seconds(rate, tuple(size)))
+        return task
+
+    async def forget(self):
+        """Stop any decode still running and wait for it: the recording's folder is about to go."""
+        tasks = list(self._decoded.values())
+        self._decoded.clear()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _decode_seconds(self, rate, size):
+        passthrough = await passthrough_option(self.ffmpeg)
+        with TemporaryDirectory(prefix="ov25-seconds-", dir=self.path.parent) as directory:
+            # The fps filter counts from the first frame, as the timestamps do; frame k is k/rate seconds.
+            # eof_action=pass keeps the last second, which the filter otherwise drops.
+            await media_command(
+                self.ffmpeg, "-nostdin", "-v", "error", "-f", "mov", "-protocol_whitelist", "file",
+                "-threads", DECODE_THREADS, "-noautorotate", "-i", self.path, "-map", "0:V:0",
+                "-vf", f"fps={rate:.6f}:round=near:eof_action=pass,scale={size[0]}:{size[1]}",
+                passthrough, "passthrough", "-q:v", "4", Path(directory) / "%05d.jpg", timeout=DECODE_TIMEOUT_S,
+            )
+            frames = await asyncio.to_thread(self._read_seconds, Path(directory), rate)
+        if not frames:
+            raise InvalidRecording("no frames decoded")
+        return frames
+
+    def _read_seconds(self, directory, rate):
+        frames = []
+        for k, image in enumerate(sorted(directory.glob("*.jpg"))):
+            pts = k / rate
+            if pts > self.end + 1e-6:
+                break
+            frames.append(dict(png=image.read_bytes(), pts=pts, timestamp=pts, fps=self.fps,
+                               frame_index=min(round(pts * self.fps), len(self.timestamps) - 1)))
+        return frames
 
     def indices(self, start, end, budget):
         first, stop = bisect_left(self.timestamps, start), bisect_right(self.timestamps, end)

@@ -23,7 +23,10 @@ GitHub Actions workflow tests the harness with fake backends.
   with the CUDA 12.9 builds (vllm 0.25.1+cu129, torch 2.11.0+cu129, transformers 5.9.0,
   ov-streaming 0.2.0). The harness's own requests were sent to it: routing (JSON-schema output with
   thinking off), answers with pictures, answers without one (persona and dialogue), and a whole
-  recording as one video with 32 frames.
+  recording as one video with 32 frames. On November 27, 2026 the same build started with the
+  current flags (`--max-model-len 102400`, `--limit-mm-per-prompt '{"image":2048,"video":1}'`, CUDA
+  graphs, no `--enforce-eager`), and the harness read a 326 s recording through it as 256 tagged
+  frames ([design.md](design.md#reading-a-recording)).
 - **Verified:** the harness against real models end to end. `ov25-harness check --voice` passed
   every check in English and in Chinese against the streaming engine (`--renderer ov21`), the
   offline model on vLLM (that run's server had `--max-model-len 32768` and
@@ -32,8 +35,8 @@ GitHub Actions workflow tests the harness with fake backends.
   in [design.md](design.md#through-the-harness).
 - Also verified: the harness's unit tests, `ov25-harness check` against the fake backends
   (`configs/local-fake.toml`), and a clean install from this repository on Python 3.12.
-- The CUDA 13 install (driver 580 or newer), the offline model without `--enforce-eager` (with CUDA
-  graphs), and the nginx example follow the packages' own documentation and still need validation.
+- The CUDA 13 install (driver 580 or newer) and the nginx example follow the packages' own
+  documentation and still need validation.
 
 ## 1. The streaming engine
 
@@ -126,10 +129,9 @@ CUDA_VISIBLE_DEVICES=1 vllm serve lmms-lab-encoder/LLaVA-OneVision-2.5-4B-Instru
   --served-model-name ov25-4b-instruct \
   --trust-remote-code \
   --hf-overrides '{"model_type":"llava_onevision2_qwen35"}' \
-  --max-model-len 12288 \
-  --limit-mm-per-prompt '{"image":8,"video":1}' \
+  --max-model-len 102400 \
+  --limit-mm-per-prompt '{"image":2048,"video":1}' \
   --gpu-memory-utilization 0.85 \
-  --enforce-eager \
   --host 127.0.0.1 --port 8000
 ```
 
@@ -153,10 +155,15 @@ another port. Three things in it are needed:
   `FileNotFoundError: ... 'ninja'`. No CUDA toolkit (`nvcc`) is needed. The first start writes
   flashinfer's compile cache under `~/.cache/flashinfer`.
 
-With `--gpu-memory-utilization 0.85` on an 80 GB GPU the server used about 69.6 GB (weights
-9.94 GiB, KV cache 53.78 GiB) and was ready about 30 s after it was started with the weights in the
-page cache. `--limit-mm-per-prompt` is enforced exactly: a request with 9 images gets HTTP 400
-`At most 8 image(s) may be provided in one prompt`, so `[chat] max_images` must not exceed it.
+With `--gpu-memory-utilization 0.85` on an 80 GB GPU the KV cache holds about 1.71 million tokens,
+16 requests of the full 102,400. CUDA graphs take 0.71 GiB more and a few minutes of compilation at
+start; leave out `--enforce-eager`, which turns them off: with the same weights on a vLLM 0.25 build,
+eager decoding took 36 ms a token and CUDA graphs 8 ms, so an answer that ran to `max_tokens` (256)
+took 9 s instead of 2 s, with the same answers. The 102,400-token context and the 2048-image limit
+let a whole recording be read as a video ([design.md](design.md#reading-a-recording)); a 30-minute
+recording takes about 85,000 tokens. `--limit-mm-per-prompt` is enforced exactly: a request with
+more images gets HTTP 400 (`At most 2048 image(s) may be provided in one prompt`), so `[chat]
+max_images` must not exceed it.
 
 The streaming engine's `ov21` renderer also sets `mamba_ssm_cache_dtype` float32,
 `mamba_cache_mode` none, `enable_prefix_caching` False and `enable_mm_embeds`. The command above
@@ -169,8 +176,8 @@ Keep the harness's `[chat]` table in step with this server:
 | --- | --- |
 | `--served-model-name ov25-4b-instruct` | `model = "ov25-4b-instruct"` |
 | `--host 127.0.0.1 --port 8000` | `url = "http://127.0.0.1:8000/v1"` |
-| `--max-model-len 12288` | `context_tokens = 12288` |
-| `--limit-mm-per-prompt '{"image":8,...}'` | `max_images = 8` |
+| `--max-model-len 102400` | `context_tokens = 102400` |
+| `--limit-mm-per-prompt '{"image":2048,...}'` | `max_images = 2048` |
 
 The harness uses this model for routing (with structured JSON output), for `realtime` and `chat`
 answers, for the `past` fallback and for recordings.
