@@ -1,0 +1,64 @@
+# English. Same keys as zh.toml; see docs/configuration.md for what each one does.
+# Rules are kept conservative: an utterance they do not match goes to the model router.
+
+[rules]
+# A whole utterance that stops the running watch.
+stop = '(?:please\s+)?(?:stop|cancel)\s+(?:watching|the\s+(?:watch|alert)|alerting)[.!?]*'
+# A question that starts like this is about the past.
+past_prefix = '(?:earlier|just\s+now|a\s+moment\s+ago|before\s+that)\b'
+# A whole utterance asking to be told when one visible thing appears; the group "target" names it.
+# The target neither starts nor ends with a space, so it cannot trade spaces with the \s around it.
+alert = [
+    '(?:please\s+)?(?:notify\s+me|let\s+me\s+know|tell\s+me|alert\s+me)\s+(?:when|whenever|as\s+soon\s+as)\s+(?:I|you)\s+(?:see|spot)\s+(?P<target>[\w-](?:[\w \t-]{0,30}?[\w-])?)\s*[.!]*',
+    '(?:please\s+)?(?:notify\s+me|let\s+me\s+know|tell\s+me|alert\s+me)\s+(?:when|whenever|as\s+soon\s+as)\s+(?P<target>[\w-](?:[\w \t-]{0,30}?[\w-])?)\s+(?:appears|shows\s+up|comes\s+into\s+view)\s*[.!]*',
+    '(?:when|whenever)\s+(?:I|you)\s+(?:see|spot)\s+(?P<target>[\w-](?:[\w \t-]{0,30}?[\w-])?)\s*,?\s*(?:notify\s+me|let\s+me\s+know|tell\s+me|alert\s+me)\s*[.!]*',
+]
+# A target containing one of these is more than a single visible thing; the model router decides it.
+alert_compound = '\b(?:and|or|before|after|again|every\w*|not|no|never|stop\w*|disappear\w*|leave\w*|leaving|left)\b'
+
+[router]
+# Example phrasings added to the router prompt, per route, joined by the separator.
+separator = ", "
+watch = ["notify me when", "let me know when", "show the part where", "identify the moment when"]
+past = ["earlier", "before", "a given span of seconds"]
+realtime = []
+chat = []
+
+[persona]
+# The router prompt keeps its own wording ("a pair of camera glasses"); docs/design.md says why.
+# The system prompt of a question answered without a picture.
+chat = "You are the assistant on a live camera; answer briefly and directly. Only when the user asks who you are, your name, what model you are or who made you, or greets you, introduce yourself: I am LLaVA-OneVision-2.5, a multimodal model jointly developed by GlintLab and LMMs-Lab."
+
+[messages]
+stopped = "Stopped watching."
+nothing_to_stop = "There is no watch running right now."
+watch_accepted = "Watch request accepted."
+stream_unavailable_past = "This session's streaming source is no longer available, so earlier frames cannot be reviewed. Please open a new session."
+stream_unavailable_watch = "This session's streaming source is no longer available, so it cannot watch. Please open a new session."
+stream_no_answer = "This session's streaming source gave no answer. Please try again."
+no_frame_yet = "No frame has arrived yet. Please send frames first (1 frame per second)."
+stale_frame = "The latest frame is {age} seconds old, so the current view cannot be answered. Please check the frame upload or the network."
+request_timeout = "The request timed out."
+temporarily_unavailable = "This request cannot be completed right now. Please try again."
+offline_model_no_answer = "The offline model did not answer. Please try again."
+no_usable_answer = "No usable answer was produced."
+no_usable_frames = "No usable frames were received."
+watch_interrupted = "The watch was interrupted. Please start it again."
+low_frame_rate = "Only {frames} frames arrived in the last {window} seconds. The model works at 1 frame per second and answers get worse with fewer frames; please keep sending 1 frame per second."
+network_delay = "Frames are arriving about {delay} seconds later than their timestamps. Please check the network or the frame rate."
+closed_idle = "No frame arrived for {seconds} seconds, so the session was closed. Please open a new session and keep sending 1 frame per second."
+voice_too_long = "A spoken turn can be at most 30 seconds."
+invalid_question = "Invalid question."
+
+[check]
+# Sample questions for `ov25-harness check --language en`.
+current = "What is in the frame now?"
+scene = "What color is the clothing of the person in the frame?"
+past = "Earlier, what appeared in the frame?"
+identity = "Who are you?"
+watch = "Let me know when you see someone waving."
+watch_object = "Let me know when you see a dog."
+stop = "Stop watching."
+short = "What is there now"
+video = "What is in the video?"
+after_end = "What happens after that?"

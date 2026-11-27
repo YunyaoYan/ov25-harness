@@ -1,0 +1,22 @@
+# Run the whole service on a laptop: in-process fake backends, no GPU, no model servers.
+#
+#     ov25-harness serve --config configs/local-fake.toml
+#
+# The fake streaming engine and fake offline model answer with canned text that says what they
+# were given (see src/ov25_harness/fake.py), so every route and the watch can be tried end to end.
+
+[server]
+host = "127.0.0.1"
+port = 8100
+languages = ["en", "zh"]
+
+[streaming]
+kind = "fake"
+user_streams = 4
+
+[chat]
+kind = "fake"
+model = "fake-offline-model"
+
+[voice]
+enabled = false

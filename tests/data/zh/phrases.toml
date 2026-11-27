@@ -1,0 +1,66 @@
+# Chinese inputs the tests use. The tests load them from here instead of writing Chinese in Python;
+# the messages the service answers with come from src/ov25_harness/locales/zh.toml.
+
+[questions]
+table = "桌上有什么？"
+who = "你是谁"
+again = "再说一遍"
+hello = "你好"
+past_held = "刚才他拿了什么？"
+past_drink = "画面里的人刚才有没有喝水？"
+past_short = "刚才呢"
+watch_cat = "看到猫的时候提醒我"
+watch_dog = "看到狗的时候提醒我"
+stop = "停止观察"
+now = "现在有什么"
+video = "视频里有什么？"
+after = "之后呢？"
+
+[answers]
+cup = "一只白色的杯子。"
+cup_short = "一只杯子。"
+picked = "他拿起了杯子。"
+picked_at_2 = "At 2 seconds: 他拿起了杯子。"
+picked_at_12 = "At 12 seconds: 他拿起了杯子。"
+picked_clock_zh = "第 12 秒：他拿起了杯子。"
+drank = "喝了一口水"
+cat = "猫出现了。"
+cat_at_9 = "At 9 seconds: 猫出现了。"
+cat_again = "猫又出现了。"
+sitting = "一个人坐着。"
+caption = "At 0 - 1 seconds: 一个人坐在桌边。"
+greeting = "你好！"
+identity = "我是 LLaVA-OneVision-2.5。"
+identity_heard = "我是 LLaVA"
+cards = "他在打牌。"
+cut = "先是……"
+
+[rewrite]
+question = "他手里拿的是什么？"
+question_bare = "他手里拿的是什么"
+rewritten = "穿红衣服的男人手里拿的是什么？"
+asked_before = "桌子旁边是谁？"
+answered_before = "一个穿红衣服的男人。"
+other = "别的问法"
+scene = "画面中有什么？"
+who = "你是谁？"
+video = "视频里的人在做什么？"
+video_rewritten = "视频里的人正在做什么事情？"
+
+[rules]
+# Utterances and the route the rules give them; "model" ones are left to the model router.
+cancel = ["停止观察", "请停止观察。", "取消提醒", "别再提醒"]
+past = ["刚才桌上有什么？", "刚刚他拿了什么？", "请看看，刚才画面里的人做了什么？"]
+watch = ["看到猫的时候提醒我", "画面里有狗出现的时候提醒我", "每次看到红色的车就提醒我"]
+model = ["桌上有什么？", "你是谁", "看到猫和狗的时候提醒我", "猫再次出现时提醒我", "猫离开的时候提醒我"]
+
+[alerts]
+# [utterance, the target the parser names]
+targets = [
+    ["看到猫的时候提醒我", "猫"],
+    ["画面里有狗出现的时候提醒我", "狗"],
+    ["每次看到红色的车就提醒我", "红色的车"],
+]
+
+[session_log]
+token = "令牌"

@@ -1,0 +1,108 @@
+# The real backends: an ov-streaming engine serving the streaming model, and an
+# OpenAI-compatible server (for example vLLM) serving the offline model, both on this machine.
+#
+#     ov25-harness serve --config configs/ov25.toml
+#
+# Every key is optional; what is left out takes the default in docs/configuration.md. An unknown
+# key or an out-of-range value stops the service at start with the field's name.
+
+[server]
+# Listen on loopback only. Set "0.0.0.0" (or an interface address) explicitly to serve a network,
+# and put an authenticating proxy in front: the API itself has no authentication.
+host = "127.0.0.1"
+port = 8100
+# Pixel budget passed to the models with each frame.
+max_pixels = 331776
+# Locales whose routing rules are active. A reply is in the language of its question.
+languages = ["en", "zh"]
+# Empty logs to stderr only; a directory gets a daily-rotated ov25-harness.log.
+log_dir = ""
+log_keep_days = 14
+
+[streaming]
+# The ov-streaming engine (`ov-streaming serve ...`): every live session opens one engine session.
+kind = "ov-streaming"
+url = "http://127.0.0.1:8011"
+# Live sessions at once. Each engine session holds max_responses + 2 of the engine's request slots.
+user_streams = 4
+# Frames a session's source keeps before the engine compacts it, and what it compacts to, unless
+# the client asks otherwise (up to max_visual_frames_limit). Do not leave a source unbounded.
+max_visual_frames = 150
+compact_to_visual_frames = 75
+max_visual_frames_limit = 700
+# Frames sent and not yet decided by the engine before the session's source is dropped.
+frame_backlog = 8
+
+[chat]
+# The offline model behind an OpenAI-compatible /v1/chat/completions. It answers questions about
+# the current frame, questions without a picture, the past fallback and offline recordings, and
+# routes the questions the rules leave open. The verified way to serve it is official vLLM in the
+# streaming engine's environment, activated (docs/deployment.md, section 2):
+#
+#     vllm serve lmms-lab-encoder/LLaVA-OneVision-2.5-4B-Instruct --served-model-name ov25-4b-instruct \
+#       --trust-remote-code --hf-overrides '{"model_type":"llava_onevision2_qwen35"}' \
+#       --max-model-len 12288 --limit-mm-per-prompt '{"image":8,"video":1}' \
+#       --gpu-memory-utilization 0.85 --enforce-eager --host 127.0.0.1 --port 8000
+kind = "openai"
+url = "http://127.0.0.1:8000/v1"
+# The server's --served-model-name.
+model = "ov25-4b-instruct"
+max_concurrency = 8
+# Images per request: at most the server's --limit-mm-per-prompt image count, which vLLM enforces
+# exactly (a request with more gets HTTP 400).
+max_images = 8
+# The server's --max-model-len and visual encoder budget, for sending a whole recording as a video.
+context_tokens = 12288
+encoder_tokens = 11552
+
+[voice]
+# The audio socket: speech recognition and synthesis through OpenAI-compatible audio endpoints.
+enabled = false
+asr_url = "http://127.0.0.1:8002/v1"
+asr_model = "Qwen/Qwen3-ASR-1.7B"
+tts_url = "http://127.0.0.1:8091/v1"
+tts_model = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+tts_voice = "vivian"
+tts_rate = 24000
+
+[subtask]
+# Who answers offline recordings and, for sessions opened with offline_subtask, real-time questions.
+# "" sends the question and its frames straight to the offline model; "ov25_harness.rewrite:factory"
+# has a text model rewrite the question first (see [rewrite]); "my_pkg.module:make" loads your own.
+factory = ""
+
+[rewrite]
+# Used only by ov25_harness.rewrite. It sends the question text, and the last two turns, to this
+# service; nothing is sent unless enabled is true and url is set.
+enabled = false
+url = ""
+model = ""
+# The name of the environment variable holding the service's key; empty sends no Authorization header.
+api_key_env = ""
+timeout_s = 3
+
+[media]
+# ffmpeg and ffprobe for uploaded recordings (4.4 or newer).
+ffmpeg = "ffmpeg"
+ffprobe = "ffprobe"
+max_upload_bytes = 134217728
+max_recording_s = 1800
+max_offline_sessions = 4
+
+[policy]
+# Seconds a question has from submission to answer.
+live_turn_s = 14
+offline_turn_s = 145
+route_timeout_s = 2
+# The newest frame answers a question about "now" only when it is at most this old.
+current_frame_age_s = 2.5
+# A live session without a frame for this long is closed; an offline one without a request.
+# Changed? Pass the same value to `ov25-harness check --live-idle-s`.
+live_idle_s = 10
+offline_idle_s = 600
+max_frame_bytes = 2097152
+# Frames kept per session for current-frame answers, the past fallback and subtasks.
+buffer_frames = 90
+buffer_bytes = 12582912
+# Question and answer pairs a question without a picture sees.
+dialogue_turns = 6

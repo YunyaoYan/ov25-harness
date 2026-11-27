@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ov25-harness"
+version = "0.1.0"
+description = "A live video question-answering service in front of a streaming video model and an offline model"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
+    "pydantic>=2,<3",
+    "uvicorn>=0.30,<1",
+    "numpy>=1.26",
+    "ov-streaming @ git+https://github.com/Kagura-0001/onevision-streaming.git@777c0ab3e923a1852d9b58af6dfb4f403d755589",
+]
+
+[project.optional-dependencies]
+voice = ["websockets>=13,<18"]
+dev = ["ruff>=0.17,<0.18", "websockets>=13,<18"]
+
+[project.scripts]
+ov25-harness = "ov25_harness.cli:main"
+
+[tool.hatch.metadata]
+# ov-streaming is not on PyPI; it is pinned to a commit of its public repository.
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ov25_harness"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "configs", "docs", "examples", "tests", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Pinned here, so a newer ruff's wider default set does not fail `ruff check .`.
+select = ["E4", "E7", "E9", "F", "B", "ASYNC", "I", "UP"]
+ignore = [
+    "B008",       # FastAPI declares request bodies and parameters as call defaults (Body(), Query())
+    "ASYNC109",   # the backends' complete(body, timeout) is the interface plugins implement
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ASYNC110"]   # tests poll for a condition with a short sleep
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+known-first-party = ["ov25_harness"]

@@ -1,0 +1,60 @@
+# Chinese. Same keys as en.toml; see docs/configuration.md for what each one does.
+
+[rules]
+# A whole utterance that stops the running watch.
+stop = '(?:请|帮我)?\s*(?:停止|取消|结束|别再)\s*(?:持续)?(?:观察|提醒)[。！!？?]*'
+# A question that starts like this is about the past.
+past_prefix = '^(?:请(?:你)?看看[，,]?\s*)?(?:(?:我|他|她|画面里的人)\s*)?(?:刚才|刚刚|方才)'
+# A whole utterance asking to be told when one visible thing appears; the group "target" names it.
+alert = [
+    '(?:请|麻烦你?|帮我)?\s*(?:一直观察|持续观察)?\s*[,，]?\s*(?:在|当|等到?)?\s*(?:每次)?\s*(?:画面(?:里|中)(?:有)?\s*)?(?P<target>[\w \t-]{1,32}?)\s*(?:每次)?出现\s*(?:的?时候|时|后)?\s*[,，]?\s*(?:每次)?\s*(?:就|再|才|都)?(?:持续|反复)?(?:提醒|通知)我(?:一下|一声|一次)?\s*[。！!？?]*',
+    '(?:请|麻烦你?|帮我)?\s*(?:接下来)?\s*(?:每次|只要|当|等到?)?\s*(?:画面(?:里|中))?\s*(?:看得到|看到|看见)\s*(?P<target>[\w \t-]{1,32}?)\s*(?:的?时候|时|后)?\s*[,，]?\s*(?:每次)?\s*(?:就|再|才|都)?(?:持续|反复)?(?:提醒|通知)我(?:一下|一声|一次)?\s*[。！!？?]*',
+]
+# A target containing one of these is more than a single visible thing; the model router decides it.
+alert_compound = '和|或|以及|与|同时|一起|并且|分别|之前|之后|以前|以后|上一次|第一次|第二次|下一次|刚才|已经|曾经|再次|再度|重新|再$|每次|持续|反复|不要|不在|不必|不许|别(?:在|等|提醒)|没有|尚未|至少|最多|只有|除非|如果|否则|消失|离开|遮住|遮挡|移开|进入|拿起|拿着|戴着|放下|变成|出现|看见|看到|声音|响声|说话|有人|正在|提醒|通知|画面|摄像头里'
+
+[router]
+# Example phrasings added to the router prompt, per route, joined by the separator.
+separator = "/"
+watch = ["提醒我", "通知我", "告诉我什么时候", "找到…出现的时候"]
+past = ["刚才", "之前", "上一次", "某段时间"]
+realtime = []
+chat = []
+
+[persona]
+# The system prompt of a question answered without a picture.
+chat = "你是实时摄像头上的助手，回答简短直接。只有用户问你是谁、叫什么、是什么模型、由谁开发，或向你打招呼时，才介绍自己：我是 LLaVA-OneVision-2.5，由格灵深瞳灵感实验室和 LMMs-Lab 联合开发的多模态大模型。"
+
+[messages]
+stopped = "已停止观察。"
+nothing_to_stop = "现在没有正在运行的观察任务。"
+watch_accepted = "已接受观察请求。"
+stream_unavailable_past = "这个会话的流式会话已不可用，无法回看之前的画面，请重新开会话。"
+stream_unavailable_watch = "这个会话的流式会话已不可用，无法观察，请重新开会话。"
+stream_no_answer = "这个会话的流式会话没有给出回答，请再试一次。"
+no_frame_yet = "还没有收到画面，请先推送画面（每秒 1 帧）。"
+stale_frame = "最近一帧画面是 {age} 秒前的，无法回答当前画面，请检查推帧或网络。"
+request_timeout = "请求处理超时。"
+temporarily_unavailable = "这个请求暂时无法完成，请再试一次。"
+offline_model_no_answer = "离线模型暂时没有回答，请再试一次。"
+no_usable_answer = "没有得到可用的答案。"
+no_usable_frames = "没有收到可用的画面。"
+watch_interrupted = "视觉观察中断，请重新发起。"
+low_frame_rate = "最近 {window} 秒只收到 {frames} 帧画面。模型按每秒 1 帧工作，帧数不足时回答质量会下降，请保持每秒推送 1 帧。"
+network_delay = "画面到达比它的时间戳晚了约 {delay} 秒，请检查网络或推帧速度。"
+closed_idle = "连续 {seconds} 秒没有收到画面，会话已关闭。请重新开会话，并保持每秒推送 1 帧。"
+voice_too_long = "语音单轮最长 30 秒"
+invalid_question = "问题无效。"
+
+[check]
+# Sample questions for `ov25-harness check --language zh`.
+current = "现在画面里有什么？"
+scene = "画面里的人穿什么颜色的衣服？"
+past = "刚才画面里出现了什么？"
+identity = "你是谁"
+watch = "看到有人挥手的时候提醒我"
+watch_object = "看到狗的时候提醒我"
+stop = "停止观察"
+short = "现在有什么"
+video = "视频里有什么？"
+after_end = "之后呢？"

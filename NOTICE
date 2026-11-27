@@ -1,0 +1,15 @@
+ov25-harness
+Copyright 2026 The ov25-harness Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The voice modules listed below originate in an earlier implementation of
+the OVStreaming project, licensed under the Apache License, Version 2.0.
+Current public project repository
+https://github.com/Kagura-0001/onevision-streaming
+
+- src/ov25_harness/voice/answers.py retains the earlier answer playback and
+  memory implementation with a new attribution header.
+- src/ov25_harness/voice/pcm.py adapts the earlier raw PCM implementation.
+  This project moved resampling out of the module, disabled environment
+  proxy settings for ASR and TTS, and updated punctuation and device wording.
